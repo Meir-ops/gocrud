@@ -17,6 +17,8 @@ type Stu struct {
 	Name string
 }
 
+var host = "9qasp5v56q8ckkf5dc.leapcellpool.com user=ufnsrbazgcetcbqwevru password=zmkiotezqmcqwpwsvrjnsxtmydznos dbname=cuarxlxvaahzbgdyqnep port=6438 sslmode=require"
+
 func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/info", info).Methods("GET")
@@ -27,7 +29,7 @@ func main() {
 
 func info(w http.ResponseWriter, r *http.Request) {
 	// fmt.Println("hello")
-	db, err := sql.Open("mysql", "root:mp496285MP@tcp(127.0.0.1:3306)/bergs")
+	db, err := sql.Open("postgresql", host)
 	if err != nil {
 		panic(err)
 	}
@@ -41,8 +43,8 @@ func info(w http.ResponseWriter, r *http.Request) {
 
 	for res.Next() {
 		var stu Stu
-		res.Scan(&stu.id, &stu.Name )
-		str := "The product name is:" + stu.Name  + " My id is:" + strconv.Itoa(stu.id)
+		res.Scan(&stu.id, &stu.Name)
+		str := "The product name is:" + stu.Name + " My id is:" + strconv.Itoa(stu.id)
 		fmt.Fprintln(w, str)
 
 	}
@@ -52,8 +54,8 @@ func add(w http.ResponseWriter, r *http.Request) {
 	data, _ := io.ReadAll(r.Body)
 	var stu Stu
 	json.Unmarshal(data, &stu)
-	
-	fmt.Fprintln(w,stu.Name )
+
+	fmt.Fprintln(w, stu.Name)
 
 	db, err := sql.Open("mysql", "root:mp496285MP@tcp(127.0.0.1:3306)/bergs")
 	if err != nil {
@@ -61,7 +63,7 @@ func add(w http.ResponseWriter, r *http.Request) {
 	}
 	defer db.Close()
 
-	res, err := db.Query("insert into student (name) values('"+stu.Name+"')")
+	res, err := db.Query("insert into student (name) values('" + stu.Name + "')")
 	if err != nil {
 		panic(err)
 	}
@@ -88,7 +90,7 @@ func update(w http.ResponseWriter, r *http.Request) {
 	}
 	defer res.Close()
 
-	fmt.Fprintln(w,"Data is updated")
+	fmt.Fprintln(w, "Data is updated")
 }
 
 func delete(w http.ResponseWriter, r *http.Request) {
