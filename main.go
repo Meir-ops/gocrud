@@ -26,6 +26,7 @@ func main() {
 	r.HandleFunc("/info", info).Methods("GET")
 	r.HandleFunc("/categories", categories).Methods("GET")
 	r.HandleFunc("/products", products).Methods("GET")
+	r.HandleFunc("/getsingle", getsingle).Methods("GET")
 	r.HandleFunc("/add", add).Methods("POST")
 	r.HandleFunc("/update/{id}", update).Methods("PUT")
 	http.ListenAndServe(":8080", r)
@@ -207,6 +208,61 @@ func products(w http.ResponseWriter, r *http.Request) {
 	// log.Fatal(http.ListenAndServe(":8080", nil))
 
 }
+
+func getsingle(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+
+	if r.Method == http.MethodOptions {
+		return
+	}
+
+	catid := r.URL.Query().Get("catid")
+	if catid == "" {
+		http.Error(w, `{"error":"Missing catid parameter"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Database connection
+	dsn := "u981786471_meir:mp496285MP@tcp(fr-int-web2000.main-hosting.eu:3306)/u981786471_bergs?charset=utf8mb4&parseTime=True&loc=Local"
+	
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"Error opening DB: %v"}`, err), http.StatusInternalServerError)
+		return
+	}
+	defer db.Close()
+
+	// Query execution
+	rows, err := db.Query("SELECT * FROM products WHERE gIdName = ? ORDER BY id ASC", catid)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"Query error: %v"}`, err), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var products []Product
+	for rows.Next() {
+		var p Product
+		err := rows.Scan(
+			&p.ID, &p.GID, &p.GIDName, &p.Name, &p.HebName,
+			&p.Price, &p.Currency, &p.PictureFolder, &p.Color, &p.Category,
+			&p.Sizes, &p.SizesIsrael, &p.Description, &p.DescHeb, &p.About,
+			&p.AboutHeb, &p.CareHeb, &p.Care, &p.Fabric, &p.FabricHeb,
+		)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"Row scan error: %v"}`, err), http.StatusInternalServerError)
+			return
+		}
+		products = append(products, p)
+	}
+
+	// Encode to JSON
+	json.NewEncoder(w).Encode(products)
+}
+
 
 func add(w http.ResponseWriter, r *http.Request) {
 	data, _ := io.ReadAll(r.Body)
