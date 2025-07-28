@@ -1,62 +1,38 @@
 package main
 
 import (
+	"context" // For context.Context, used in MongoDB operations
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
-	"strconv"
-
 	"log"
+	"net/http"
+	// "net/url" // Added for URL encoding
+	// "os"
+	"strconv"
+	// "strings" // Added for string manipulation
+	// "time"    // Added for context timeout
 
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/gorilla/mux"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	_ "github.com/lib/pq"
+	// "github.com/joho/godotenv"
+	"github.com/gorilla/mux" // For routing
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
+	_ "github.com/go-sql-driver/mysql" // MySQL driver
+	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver (pgx)
+	_ "github.com/lib/pq"              // PostgreSQL driver (pq) - often used with pgx
 )
 
+// Stu struct for SQL student table
 type Stu struct {
-	id   int
-	Name string
+	ID   int    `json:"id"`   // Added json tag for consistency, note: field names should be exported
+	Name string `json:"name"` // Exported field for JSON marshalling and scanning
 }
 
-func main() {
-	r := mux.NewRouter()
-	r.HandleFunc("/info", info).Methods("GET")
-	r.HandleFunc("/categories", categories).Methods("GET")
-	r.HandleFunc("/products", products).Methods("GET")
-	r.HandleFunc("/getsingle", getsingle).Methods("GET")
-	r.HandleFunc("/add", add).Methods("POST")
-	r.HandleFunc("/update/{id}", update).Methods("PUT")
-	http.ListenAndServe(":8080", r)
-}
-
-func info(w http.ResponseWriter, r *http.Request) {
-	// fmt.Println("hello")
-	// db, err := sql.Open("mysql", "root:mp496285MP@tcp(127.0.0.1:3306)/bergs")
-	connStr := fmt.Sprintf("host=9qasp5v56q8ckkf5dc.leapcellpool.com port=6438 user=ufnsrbazgcetcbqwevru password=zmkiotezqmcqwpwsvrjnsxtmydznos dbname=cuarxlxvaahzbgdyqnep sslmode=require")
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
-
-	res, err := db.Query("select * from student")
-	if err != nil {
-		panic(err)
-	}
-	defer res.Close()
-
-	for res.Next() {
-		var stu Stu
-		res.Scan(&stu.id, &stu.Name)
-		str := "The product name is:" + stu.Name + " My id is:" + strconv.Itoa(stu.id)
-		fmt.Fprintln(w, str)
-	}
-	fmt.Fprintln(w, "Thats all")
-}
-
+// Category struct for SQL category table
 type Category struct {
 	ID     int    `json:"id"`
 	Name   string `json:"name"`
@@ -64,85 +40,129 @@ type Category struct {
 	Hebrew string `json:"hebrew"`
 }
 
-func categories(w http.ResponseWriter, r *http.Request) {
-	// fmt.Println("hello")
-	// db, err := sql.Open("mysql", "root:mp496285MP@tcp(127.0.0.1:3306)/bergs")
+// Product struct for both SQL products and MongoDB products collection
+// Added `bson` tags for MongoDB mapping
+type Product struct {
+	ID            int             `json:"id" bson:"id"`
+	GID           int             `json:"gId" bson:"gId"`
+	GIDName       string          `json:"gIdName" bson:"gIdName"`
+	Name          string          `json:"name" bson:"name"`
+	HebName       string          `json:"heb_name" bson:"heb_name"`
+	Price         float64         `json:"price" bson:"price"`
+	Currency      int             `json:"currency" bson:"currency"`
+	PictureFolder string          `json:"picture_folder" bson:"picture_folder"`
+	Color         string          `json:"color" bson:"color"`
+	Category      int             `json:"category" bson:"category"`
+	Sizes         json.RawMessage `json:"sizes" bson:"sizes"` // stored as JSON
+	SizesIsrael   string          `json:"sizes_israel" bson:"sizes_israel"`
+	Description   string          `json:"description" bson:"description"`
+	DescHeb       string          `json:"desc_heb" bson:"desc_heb"`
+	About         string          `json:"about" bson:"about"`
+	AboutHeb      string          `json:"about_heb" bson:"about_heb"`
+	CareHeb       string          `json:"care_heb" bson:"care_heb"`
+	Care          string          `json:"care" bson:"care"`
+	Fabric        string          `json:"fabric" bson:"fabric"`
+	FabricHeb     string          `json:"fabric_heb" bson:"fabric_heb"`
+}
+
+func main() {
+	r := mux.NewRouter()
+	r.HandleFunc("/info", info).Methods("GET")
+	r.HandleFunc("/categories", categories).Methods("GET")
+	r.HandleFunc("/products", products).Methods("GET")
+	r.HandleFunc("/products_mongo", products_mongo).Methods("GET")
+	r.HandleFunc("/getsingle", getsingle).Methods("GET")
+	r.HandleFunc("/add", add).Methods("POST")
+	r.HandleFunc("/update/{id}", update).Methods("PUT")
+	r.HandleFunc("/delete/{id}", deleteHandler).Methods("DELETE") // Renamed to avoid conflict with built-in
+	fmt.Println("Server running on http://localhost:8080")
+	log.Fatal(http.ListenAndServe(":8080", r))
+}
+
+// info handler for SQL student data
+func info(w http.ResponseWriter, r *http.Request) {
 	connStr := fmt.Sprintf("host=9qasp5v56q8ckkf5dc.leapcellpool.com port=6438 user=ufnsrbazgcetcbqwevru password=zmkiotezqmcqwpwsvrjnsxtmydznos dbname=cuarxlxvaahzbgdyqnep sslmode=require")
-	db, err := sql.Open("pgx", connStr)
+	db, err := sql.Open("postgres", connStr)
 	if err != nil {
-		panic(err)
+		http.Error(w, fmt.Sprintf("Error opening DB connection: %v", err), http.StatusInternalServerError)
+		return
 	}
 	defer db.Close()
 
-	res, err := db.Query("SELECT * FROM category ORDER BY idcol ASC;")
+	res, err := db.Query("select id, name from student") // Specify columns to avoid issues with `id` field
 	if err != nil {
-		panic(err)
+		http.Error(w, fmt.Sprintf("Error querying student table: %v", err), http.StatusInternalServerError)
+		return
 	}
 	defer res.Close()
+
+	for res.Next() {
+		var stu Stu
+		// Ensure `id` is exported in Stu struct (Stu.ID) for Scan to work
+		if err := res.Scan(&stu.ID, &stu.Name); err != nil {
+			log.Printf("Error scanning student row: %v", err)
+			continue
+		}
+		str := "The product name is:" + stu.Name + " My id is:" + strconv.Itoa(stu.ID)
+		fmt.Fprintln(w, str)
+	}
+	fmt.Fprintln(w, "Thats all")
+}
+
+// categories handler for SQL category data
+func categories(w http.ResponseWriter, r *http.Request) {
+	connStr := fmt.Sprintf("host=9qasp5v56q8ckkf5dc.leapcellpool.com port=6438 user=ufnsrbazgcetcbqwevru password=zmkiotezqmcqwpwsvrjnsxtmydznos dbname=cuarxlxvaahzbgdyqnep sslmode=require")
+	db, err := sql.Open("pgx", connStr) // Using "pgx" driver
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error opening DB connection: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer db.Close()
+
+	res, err := db.Query("SELECT ID, Idcol, Name, Hebrew FROM category ORDER BY idcol ASC;")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error querying categories: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer res.Close()
+
 	var categories []Category
 	for res.Next() {
-		var stu Category
-		res.Scan(&stu.ID, &stu.Idcol, &stu.Name, &stu.Hebrew)
-		// str := "The product name is:" + stu.Name + " Idcol is:" + strconv.Itoa(stu.Idcol)
-		categories = append(categories, stu)
-		// jsonData, err := json.Marshal(categories)
-		// fmt.Fprintf(w, string(jsonData))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+		var cat Category
+		if err := res.Scan(&cat.ID, &cat.Idcol, &cat.Name, &cat.Hebrew); err != nil {
+			log.Printf("Error scanning category row: %v", err)
+			continue
 		}
+		categories = append(categories, cat)
 	}
-	jsonData, err := json.Marshal(categories)
-	// fmt.Fprintln(w, jsonData)
-	// Set proper content type and write JSON bytes
+
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(jsonData) // This writes the actual JSON
+	if err := json.NewEncoder(w).Encode(categories); err != nil {
+		http.Error(w, fmt.Sprintf("Error encoding categories to JSON: %v", err), http.StatusInternalServerError)
+		return
+	}
 }
 
-type Product struct {
-	ID            int             `json:"id"`
-	GID           int             `json:"gId"`
-	GIDName       string          `json:"gIdName"`
-	Name          string          `json:"name"`
-	HebName       string          `json:"heb_name"`
-	Price         float64         `json:"price"`
-	Currency      int             `json:"currency"`
-	PictureFolder string          `json:"picture_folder"`
-	Color         string          `json:"color"`
-	Category      int             `json:"category"`
-	Sizes         json.RawMessage `json:"sizes"` // stored as JSON
-	SizesIsrael   string          `json:"sizes_israel"`
-	Description   string          `json:"description"`
-	DescHeb       string          `json:"desc_heb"`
-	About         string          `json:"about"`
-	AboutHeb      string          `json:"about_heb"`
-	CareHeb       string          `json:"care_heb"`
-	Care          string          `json:"care"`
-	Fabric        string          `json:"fabric"`
-	FabricHeb     string          `json:"fabric_heb"`
-}
-
+// products handler for SQL product data
 func products(w http.ResponseWriter, r *http.Request) {
 	dsn := "u981786471_meir:mp496285MP@tcp(fr-int-web2000.main-hosting.eu:3306)/u981786471_bergs?charset=utf8mb4&parseTime=True&loc=Local"
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
-		log.Fatal("DB connection failed:", err)
+		http.Error(w, fmt.Sprintf("DB connection failed: %v", err), http.StatusInternalServerError)
+		return
 	}
 	defer db.Close()
 
-	// http.HandleFunc("/products", func(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	id := r.URL.Query().Get("id")
 	catid := r.URL.Query().Get("catid")
 
-	var rows *sql.Rows
-	var row *sql.Row
 	var result any
 
 	if id != "" {
 		if _, err := strconv.Atoi(id); err == nil {
-			row = db.QueryRow("SELECT * FROM products WHERE id = ? ORDER BY id ASC", id)
+			row := db.QueryRow("SELECT ID, GID, GIDName, Name, HebName, Price, Currency, PictureFolder, Color, Category, Sizes, SizesIsrael, Description, DescHeb, About, AboutHeb, CareHeb, Care, Fabric, FabricHeb FROM products WHERE id = ?", id)
 			var p Product
 			err := row.Scan(
 				&p.ID, &p.GID, &p.GIDName, &p.Name, &p.HebName, &p.Price, &p.Currency,
@@ -151,30 +171,30 @@ func products(w http.ResponseWriter, r *http.Request) {
 				&p.CareHeb, &p.Care, &p.Fabric, &p.FabricHeb,
 			)
 			if err == sql.ErrNoRows {
+				w.WriteHeader(http.StatusNotFound)
 				json.NewEncoder(w).Encode(map[string]string{"error": "Product not found"})
 				return
 			} else if err != nil {
-				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				http.Error(w, fmt.Sprintf("Error scanning product row: %v", err), http.StatusInternalServerError)
 				return
 			}
 			result = p
 		} else {
-			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid id format"})
+			http.Error(w, `{"error": "Invalid id format"}`, http.StatusBadRequest)
 			return
 		}
 
 	} else if catid != "" {
 		var query string
 		if _, err := strconv.Atoi(catid); err == nil {
-			query = "SELECT * FROM products WHERE category = ? ORDER BY id ASC"
+			query = "SELECT ID, GID, GIDName, Name, HebName, Price, Currency, PictureFolder, Color, Category, Sizes, SizesIsrael, Description, DescHeb, About, AboutHeb, CareHeb, Care, Fabric, FabricHeb FROM products WHERE category = ? ORDER BY id ASC"
 		} else {
-			query = "SELECT * FROM products WHERE gIdName = ? ORDER BY id ASC"
+			query = "SELECT ID, GID, GIDName, Name, HebName, Price, Currency, PictureFolder, Color, Category, Sizes, SizesIsrael, Description, DescHeb, About, AboutHeb, CareHeb, Care, Fabric, FabricHeb FROM products WHERE gIdName = ? ORDER BY id ASC"
 		}
 
-		rows, err = db.Query(query, catid)
+		rows, err := db.Query(query, catid)
 		if err != nil {
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			log.Fatalf("Error opening DB: %v", err)
+			http.Error(w, fmt.Sprintf("Error querying products: %v", err), http.StatusInternalServerError)
 			return
 		}
 		defer rows.Close()
@@ -189,7 +209,7 @@ func products(w http.ResponseWriter, r *http.Request) {
 				&p.CareHeb, &p.Care, &p.Fabric, &p.FabricHeb,
 			)
 			if err != nil {
-				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				http.Error(w, fmt.Sprintf("Error scanning product row: %v", err), http.StatusInternalServerError)
 				return
 			}
 			products = append(products, p)
@@ -197,18 +217,85 @@ func products(w http.ResponseWriter, r *http.Request) {
 		result = products
 
 	} else {
-		json.NewEncoder(w).Encode(map[string]string{"error": "Either id or catid parameter is required"})
+		http.Error(w, `{"error": "Either id or catid parameter is required"}`, http.StatusBadRequest)
 		return
 	}
 
 	// Output result
-	json.NewEncoder(w).Encode(result)
-
-	// fmt.Println("Server running on http://localhost:8080/products")
-	// log.Fatal(http.ListenAndServe(":8080", nil))
-
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		http.Error(w, fmt.Sprintf("Error encoding result to JSON: %v", err), http.StatusInternalServerError)
+	}
 }
 
+// products_mongo handler for MongoDB product data
+func products_mongo(w http.ResponseWriter, r *http.Request) {
+	// Load environment variables from .env file
+	MONGODB_URI := "mongodb+srv://meir:mp-496285MP@bergs.9zb9ptn.mongodb.net/?retryWrites=true&w=majority&appName=Bergs"
+
+	uri := MONGODB_URI
+	docs := "www.mongodb.com/docs/drivers/go/current/"
+
+	if uri == "" {
+		log.Fatal("Set your 'MONGODB_URI' environment variable. " +
+			"See: " + docs +
+			"usage-examples/#environment-variable")
+	}
+	client, err := mongo.Connect(options.Client().
+		ApplyURI(uri))
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		if err := client.Disconnect(context.TODO()); err != nil {
+			panic(err)
+		}
+	}()
+
+	// id := r.URL.Query().Get("id")
+	catid := r.URL.Query().Get("catid")
+
+	coll := client.Database("Products").Collection("products")
+	title := "rgo6209"
+	var result bson.M
+	i, err := strconv.Atoi(catid)
+	cursor, err := coll.Find(context.TODO(), bson.D{{Key: "category", Value: i}})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer cursor.Close(context.TODO())
+
+	for cursor.Next(context.TODO()) {
+		var result bson.M
+		if err := cursor.Decode(&result); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(result)
+		if err := json.NewEncoder(w).Encode(result); err != nil {
+		http.Error(w, fmt.Sprintf("Error encoding categories to JSON: %v", err), http.StatusInternalServerError)
+		return
+	}
+	}
+
+	if err == mongo.ErrNoDocuments {
+		fmt.Printf("No document was found with the title %s\n", title)
+		return
+	}
+	if err != nil {
+		panic(err)
+	}
+	jsonData, err := json.MarshalIndent(result, "", "    ")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("%s\n", jsonData)
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		http.Error(w, fmt.Sprintf("Error encoding categories to JSON: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// getsingle handler for SQL product data by gIdName
 func getsingle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -216,7 +303,7 @@ func getsingle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
 
 	if r.Method == http.MethodOptions {
-		return
+		return // Handle CORS preflight request
 	}
 
 	catid := r.URL.Query().Get("catid")
@@ -225,9 +312,7 @@ func getsingle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Database connection
 	dsn := "u981786471_meir:mp496285MP@tcp(fr-int-web2000.main-hosting.eu:3306)/u981786471_bergs?charset=utf8mb4&parseTime=True&loc=Local"
-	
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Error opening DB: %v"}`, err), http.StatusInternalServerError)
@@ -235,8 +320,7 @@ func getsingle(w http.ResponseWriter, r *http.Request) {
 	}
 	defer db.Close()
 
-	// Query execution
-	rows, err := db.Query("SELECT * FROM products WHERE gIdName = ? ORDER BY id ASC", catid)
+	rows, err := db.Query("SELECT ID, GID, GIDName, Name, HebName, Price, Currency, PictureFolder, Color, Category, Sizes, SizesIsrael, Description, DescHeb, About, AboutHeb, CareHeb, Care, Fabric, FabricHeb FROM products WHERE gIdName = ? ORDER BY id ASC", catid)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Query error: %v"}`, err), http.StatusInternalServerError)
 		return
@@ -259,54 +343,129 @@ func getsingle(w http.ResponseWriter, r *http.Request) {
 		products = append(products, p)
 	}
 
-	// Encode to JSON
-	json.NewEncoder(w).Encode(products)
+	if err := json.NewEncoder(w).Encode(products); err != nil {
+		http.Error(w, fmt.Sprintf("Error encoding products to JSON: %v", err), http.StatusInternalServerError)
+	}
 }
 
-
+// add handler for SQL student data
 func add(w http.ResponseWriter, r *http.Request) {
-	data, _ := io.ReadAll(r.Body)
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Error reading request body", http.StatusInternalServerError)
+		return
+	}
 	var stu Stu
-	json.Unmarshal(data, &stu)
-
-	fmt.Fprintln(w, stu.Name)
+	if err := json.Unmarshal(data, &stu); err != nil {
+		http.Error(w, "Error unmarshaling JSON", http.StatusBadRequest)
+		return
+	}
 
 	db, err := sql.Open("mysql", "root:mp496285MP@tcp(127.0.0.1:3306)/bergs")
 	if err != nil {
-		panic(err)
+		http.Error(w, fmt.Sprintf("Error opening DB connection: %v", err), http.StatusInternalServerError)
+		return
 	}
 	defer db.Close()
 
-	res, err := db.Query("insert into student (name) values('" + stu.Name + "')")
+	// Use prepared statements to prevent SQL injection
+	stmt, err := db.Prepare("INSERT INTO student (name) VALUES(?)")
 	if err != nil {
-		panic(err)
+		http.Error(w, fmt.Sprintf("Error preparing statement: %v", err), http.StatusInternalServerError)
+		return
 	}
-	defer res.Close()
+	defer stmt.Close()
+
+	_, err = stmt.Exec(stu.Name)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error inserting data: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	fmt.Fprintln(w, stu.Name+" is my name and added to database")
 }
 
+// update handler for SQL student data
 func update(w http.ResponseWriter, r *http.Request) {
-	data, _ := io.ReadAll(r.Body)
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Error reading request body", http.StatusInternalServerError)
+		return
+	}
 	var stu Stu
-	json.Unmarshal(data, &stu)
-	id := mux.Vars(r)["id"]
+	if err := json.Unmarshal(data, &stu); err != nil {
+		http.Error(w, "Error unmarshaling JSON", http.StatusBadRequest)
+		return
+	}
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid ID format", http.StatusBadRequest)
+		return
+	}
 
 	db, err := sql.Open("mysql", "root:mp496285MP@tcp(127.0.0.1:3306)/bergs")
 	if err != nil {
-		panic(err)
+		http.Error(w, fmt.Sprintf("Error opening DB connection: %v", err), http.StatusInternalServerError)
+		return
 	}
 	defer db.Close()
 
-	res, err := db.Query("update student set name='" + stu.Name + "' where id=" + id)
+	// Use prepared statements to prevent SQL injection
+	stmt, err := db.Prepare("UPDATE student SET name = ? WHERE id = ?")
 	if err != nil {
-		panic(err)
+		http.Error(w, fmt.Sprintf("Error preparing statement: %v", err), http.StatusInternalServerError)
+		return
 	}
-	defer res.Close()
+	defer stmt.Close()
+
+	_, err = stmt.Exec(stu.Name, id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error updating data: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	fmt.Fprintln(w, "Data is updated")
 }
 
-func delete(w http.ResponseWriter, r *http.Request) {
+// deleteHandler for SQL student data
+func deleteHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	idStr := vars["id"]
 
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid ID format", http.StatusBadRequest)
+		return
+	}
+
+	db, err := sql.Open("mysql", "root:mp496285MP@tcp(127.0.0.1:3306)/bergs")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error opening DB connection: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer db.Close()
+
+	stmt, err := db.Prepare("DELETE FROM student WHERE id = ?")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error preparing statement: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer stmt.Close()
+
+	res, err := stmt.Exec(id)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error deleting data: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "No student found with the given ID", http.StatusNotFound)
+		return
+	}
+
+	fmt.Fprintln(w, "Data is deleted")
 }
