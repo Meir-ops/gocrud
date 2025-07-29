@@ -186,6 +186,11 @@ func categories(w http.ResponseWriter, r *http.Request) {
 
 // products handler for SQL product data
 func products(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	// Set CORS headers for local development if needed, but consider more robust solutions for production
+	w.Header().Set("Access-Control-Allow-Origin", "*") // WARNING: For development only. Restrict this in production!
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 	dsn := "u981786471_meir:mp496285MP@tcp(fr-int-web2000.main-hosting.eu:3306)/u981786471_bergs?charset=utf8mb4&parseTime=True&loc=Local"
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
