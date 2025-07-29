@@ -8,22 +8,22 @@ import (
 	"io"
 	"log"
 	"net/http"
-	// "net/url" // Added for URL encoding
-	// "os"
-	"strconv"
-	// "strings" // Added for string manipulation
-	// "time"    // Added for context timeout
+	"time"
 
-	// "github.com/joho/godotenv"
+	"strconv"
 	"github.com/gorilla/mux" // For routing
 
-	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	// "go.mongodb.org/mongo-driver/v2/bson"
+	// "go.mongodb.org/mongo-driver/v2/mongo"
+	// "go.mongodb.org/mongo-driver/v2/mongo/options"
+	"go.mongodb.org/mongo-driver/bson"         // REMOVE /v2
+	"go.mongodb.org/mongo-driver/mongo"         // REMOVE /v2
+	"go.mongodb.org/mongo-driver/mongo/options" // REMOVE /v2
 
 	_ "github.com/go-sql-driver/mysql" // MySQL driver
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver (pgx)
 	_ "github.com/lib/pq"              // PostgreSQL driver (pq) - often used with pgx
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // Stu struct for SQL student table
@@ -43,26 +43,67 @@ type Category struct {
 // Product struct for both SQL products and MongoDB products collection
 // Added `bson` tags for MongoDB mapping
 type Product struct {
-	ID            int             `json:"id" bson:"id"`
-	GID           int             `json:"gId" bson:"gId"`
-	GIDName       string          `json:"gIdName" bson:"gIdName"`
-	Name          string          `json:"name" bson:"name"`
-	HebName       string          `json:"heb_name" bson:"heb_name"`
-	Price         float64         `json:"price" bson:"price"`
-	Currency      int             `json:"currency" bson:"currency"`
-	PictureFolder string          `json:"picture_folder" bson:"picture_folder"`
-	Color         string          `json:"color" bson:"color"`
-	Category      int             `json:"category" bson:"category"`
-	Sizes         json.RawMessage `json:"sizes" bson:"sizes"` // stored as JSON
-	SizesIsrael   string          `json:"sizes_israel" bson:"sizes_israel"`
-	Description   string          `json:"description" bson:"description"`
-	DescHeb       string          `json:"desc_heb" bson:"desc_heb"`
-	About         string          `json:"about" bson:"about"`
-	AboutHeb      string          `json:"about_heb" bson:"about_heb"`
-	CareHeb       string          `json:"care_heb" bson:"care_heb"`
-	Care          string          `json:"care" bson:"care"`
-	Fabric        string          `json:"fabric" bson:"fabric"`
-	FabricHeb     string          `json:"fabric_heb" bson:"fabric_heb"`
+    // Add this field to correctly map MongoDB's _id (ObjectID)
+    MongoDB_ID      primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
+
+    // Keep the existing 'id' field for the numerical 'id' from your MongoDB document
+    ID              int             `json:"id" bson:"id"`
+    GID             int             `json:"gId" bson:"gId"`
+    GIDName         string          `json:"gIdName" bson:"gIdName"`
+    Name            string          `json:"name" bson:"name"`
+    HebName         string          `json:"heb_name" bson:"heb_name"` // Exported field name
+    Price           float64         `json:"price" bson:"price"`
+    Currency        int             `json:"currency" bson:"currency"`
+    PictureFolder   string          `json:"picture_folder" bson:"picture_folder"`
+    Color           json.RawMessage `json:"color" bson:"color"`
+    Category        int             `json:"category" bson:"category"`
+    Sizes           json.RawMessage `json:"sizes" bson:"sizes"`
+    SizesIsrael     json.RawMessage `json:"sizes_israel" bson:"sizes_israel"`
+    Description     string          `json:"description" bson:"description"`
+    DescHeb         string          `json:"desc_heb" bson:"desc_heb"`   // Exported field name
+    About           string          `json:"about" bson:"about"`
+    AboutHeb        string          `json:"about_heb" bson:"about_heb"` // Exported field name
+    CareHeb         string          `json:"care_heb" bson:"care_heb"`   // Exported field name
+    Care            string          `json:"care" bson:"care"`
+    Fabric          string          `json:"fabric" bson:"fabric"`
+    FabricHeb       string          `json:"fabric_heb" bson:"fabric_heb"` // Exported field name
+}
+
+// Define the struct for items within the 'color' array
+type ColorItem struct {
+    Name string `json:"name" bson:"name"`
+    Hex  string `json:"hex" bson:"hex"`
+}
+
+// Define the struct for items within the 'sizes' array
+type SizeItem struct {
+    ID        int    `json:"id" bson:"id"`
+    Value     string `json:"value" bson:"value"`
+    IsEditing bool   `json:"isEditing" bson:"isEditing"`
+}
+
+type Product1 struct {
+    MongoDB_ID      primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
+    ID              int             `json:"id" bson:"id"`
+    GID             int             `json:"gId" bson:"gId"`
+    GIDName         string          `json:"gIdName" bson:"gIdName"`
+    Name            string          `json:"name" bson:"name"`
+    HebName         string          `json:"heb_name" bson:"heb_name"`
+    Price           float64         `json:"price" bson:"price"`
+    Currency        int             `json:"currency" bson:"currency"`
+    PictureFolder   string          `json:"picture_folder" bson:"picture_folder"`
+    Color           []ColorItem     `json:"color" bson:"color"`
+    Category        int             `json:"category" bson:"category"`
+    Sizes           []SizeItem      `json:"sizes" bson:"sizes"`
+    SizesIsrael     []string        `json:"sizes_israel" bson:"sizes_israel"` // <--- NEW CHANGE HERE
+    Description     string          `json:"description" bson:"description"`
+    DescHeb         string          `json:"desc_heb" bson:"desc_heb"`
+    About           string          `json:"about" bson:"about"`
+    AboutHeb        string          `json:"about_heb" bson:"about_heb"`
+    CareHeb         string          `json:"care_heb" bson:"care_heb"`
+    Care            string          `json:"care" bson:"care"`
+    Fabric          string          `json:"fabric" bson:"fabric"`
+    FabricHeb       string          `json:"fabric_heb" bson:"fabric_heb"`
 }
 
 func main() {
@@ -162,7 +203,7 @@ func products(w http.ResponseWriter, r *http.Request) {
 
 	if id != "" {
 		if _, err := strconv.Atoi(id); err == nil {
-			row := db.QueryRow("SELECT ID, GID, GIDName, Name, HebName, Price, Currency, PictureFolder, Color, Category, Sizes, SizesIsrael, Description, DescHeb, About, AboutHeb, CareHeb, Care, Fabric, FabricHeb FROM products WHERE id = ?", id)
+			row := db.QueryRow("SELECT ID, GID, GIDName, Name, heb_name, Price, Currency, PictureFolder, Color, Category, Sizes, SizesIsrael, Description, DescHeb, About, AboutHeb, CareHeb, Care, Fabric, FabricHeb FROM products WHERE id = ?", id)
 			var p Product
 			err := row.Scan(
 				&p.ID, &p.GID, &p.GIDName, &p.Name, &p.HebName, &p.Price, &p.Currency,
@@ -187,9 +228,9 @@ func products(w http.ResponseWriter, r *http.Request) {
 	} else if catid != "" {
 		var query string
 		if _, err := strconv.Atoi(catid); err == nil {
-			query = "SELECT ID, GID, GIDName, Name, HebName, Price, Currency, PictureFolder, Color, Category, Sizes, SizesIsrael, Description, DescHeb, About, AboutHeb, CareHeb, Care, Fabric, FabricHeb FROM products WHERE category = ? ORDER BY id ASC"
+			query = "SELECT ID, GID, GIDName, Name, heb_name, Price, Currency, picture_folder, Color, Category, Sizes, Sizes_Israel, `desc`, Desc_Heb, About, About_Heb, Care_Heb, Care, Fabric, Fabric_Heb FROM products WHERE category = ? ORDER BY id ASC"
 		} else {
-			query = "SELECT ID, GID, GIDName, Name, HebName, Price, Currency, PictureFolder, Color, Category, Sizes, SizesIsrael, Description, DescHeb, About, AboutHeb, CareHeb, Care, Fabric, FabricHeb FROM products WHERE gIdName = ? ORDER BY id ASC"
+			query = "SELECT ID, GID, GIDName, Name, heb_name, Price, Currency, picture_folder, Color, Category, Sizes, Sizes_Israel, `desc`, Desc_Heb, About, About_Heb, Care_Heb, Care, Fabric, Fabric_Heb FROM products WHERE gIdName = ? ORDER BY id ASC"
 		}
 
 		rows, err := db.Query(query, catid)
@@ -229,70 +270,87 @@ func products(w http.ResponseWriter, r *http.Request) {
 
 // products_mongo handler for MongoDB product data
 func products_mongo(w http.ResponseWriter, r *http.Request) {
-	// Load environment variables from .env file
-	MONGODB_URI := "mongodb+srv://meir:mp-496285MP@bergs.9zb9ptn.mongodb.net/?retryWrites=true&w=majority&appName=Bergs"
+	// Set the Content-Type header once at the beginning for JSON response
+	w.Header().Set("Content-Type", "application/json")
+	// Set CORS headers for local development if needed, but consider more robust solutions for production
+	w.Header().Set("Access-Control-Allow-Origin", "*") // WARNING: For development only. Restrict this in production!
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
+
+	// Create a context with a timeout for MongoDB operations
+	// This prevents requests from hanging indefinitely
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel() // Ensure the context is cancelled to release resources
+	MONGODB_URI := "mongodb+srv://meir:mp-496285MP@bergs.9zb9ptn.mongodb.net/?retryWrites=true&w=majority&appName=Bergs"
 	uri := MONGODB_URI
-	docs := "www.mongodb.com/docs/drivers/go/current/"
 
 	if uri == "" {
-		log.Fatal("Set your 'MONGODB_URI' environment variable. " +
-			"See: " + docs +
-			"usage-examples/#environment-variable")
+		http.Error(w, "MONGODB_URI environment variable not set", http.StatusInternalServerError)
+		log.Println("MONGODB_URI environment variable not set.")
+		return
 	}
-	client, err := mongo.Connect(options.Client().
-		ApplyURI(uri))
+
+	// CORRECTED LINE HERE: ctx is the first argument to mongo.Connect
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
 	if err != nil {
-		panic(err)
+		http.Error(w, fmt.Sprintf("Failed to connect to MongoDB: %v", err), http.StatusInternalServerError)
+		log.Printf("Failed to connect to MongoDB: %v", err)
+		return
 	}
 	defer func() {
-		if err := client.Disconnect(context.TODO()); err != nil {
-			panic(err)
+		if err := client.Disconnect(ctx); err != nil {
+			log.Printf("Error disconnecting from MongoDB: %v", err)
 		}
 	}()
 
-	// id := r.URL.Query().Get("id")
-	catid := r.URL.Query().Get("catid")
+	catidStr := r.URL.Query().Get("catid")
+	if catidStr == "" {
+		http.Error(w, "Missing 'catid' query parameter", http.StatusBadRequest)
+		return
+	}
+
+	catid, err := strconv.Atoi(catidStr)
+	if err != nil {
+		http.Error(w, "Invalid 'catid' parameter. Must be an integer.", http.StatusBadRequest)
+		return
+	}
 
 	coll := client.Database("Products").Collection("products")
-	title := "rgo6209"
-	var result bson.M
-	i, err := strconv.Atoi(catid)
-	cursor, err := coll.Find(context.TODO(), bson.D{{Key: "category", Value: i}})
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer cursor.Close(context.TODO())
 
-	for cursor.Next(context.TODO()) {
-		var result bson.M
-		if err := cursor.Decode(&result); err != nil {
-			log.Fatal(err)
+	var products []Product1
+
+	cursor, err := coll.Find(ctx, bson.D{{Key: "category", Value: catid}})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error finding documents: %v", err), http.StatusInternalServerError)
+		log.Printf("Error finding documents in MongoDB: %v", err)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var product Product1
+		if err := cursor.Decode(&product); err != nil {
+			http.Error(w, fmt.Sprintf("Error decoding document: %v", err), http.StatusInternalServerError)
+			log.Printf("Error decoding MongoDB document: %v", err)
+			return
 		}
-		fmt.Println(result)
-		if err := json.NewEncoder(w).Encode(result); err != nil {
-		http.Error(w, fmt.Sprintf("Error encoding categories to JSON: %v", err), http.StatusInternalServerError)
-		return
-	}
+		products = append(products, product)
 	}
 
-	if err == mongo.ErrNoDocuments {
-		fmt.Printf("No document was found with the title %s\n", title)
+	if err := cursor.Err(); err != nil {
+		http.Error(w, fmt.Sprintf("Cursor iteration error: %v", err), http.StatusInternalServerError)
+		log.Printf("Cursor iteration error: %v", err)
 		return
 	}
-	if err != nil {
-		panic(err)
-	}
-	jsonData, err := json.MarshalIndent(result, "", "    ")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("%s\n", jsonData)
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(result); err != nil {
-		http.Error(w, fmt.Sprintf("Error encoding categories to JSON: %v", err), http.StatusInternalServerError)
+
+	if err := json.NewEncoder(w).Encode(products); err != nil {
+		http.Error(w, fmt.Sprintf("Error encoding products array to JSON: %v", err), http.StatusInternalServerError)
+		log.Printf("Error encoding products array to JSON: %v", err)
 		return
 	}
+
+	log.Printf("Successfully served %d products for category %d", len(products), catid)
 }
 
 // getsingle handler for SQL product data by gIdName
@@ -320,7 +378,7 @@ func getsingle(w http.ResponseWriter, r *http.Request) {
 	}
 	defer db.Close()
 
-	rows, err := db.Query("SELECT ID, GID, GIDName, Name, HebName, Price, Currency, PictureFolder, Color, Category, Sizes, SizesIsrael, Description, DescHeb, About, AboutHeb, CareHeb, Care, Fabric, FabricHeb FROM products WHERE gIdName = ? ORDER BY id ASC", catid)
+	rows, err := db.Query("SELECT ID, GID, GIDName, Name, heb_name, Price, Currency, PictureFolder, Color, Category, Sizes, SizesIsrael, Description, DescHeb, About, AboutHeb, CareHeb, Care, Fabric, FabricHeb FROM products WHERE gIdName = ? ORDER BY id ASC", catid)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"Query error: %v"}`, err), http.StatusInternalServerError)
 		return
